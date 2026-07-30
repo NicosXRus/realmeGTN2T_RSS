@@ -19,16 +19,27 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Clone Vendor Source & Setup Symlinks
+      - name: Clone Vendor Source & Setup Paths
         run: |
-          echo "Загружаем вендорные модули MediaTek / Oplus..."
-          git clone --depth=1 https://github.com/realme-kernel-opensource/realme_X7max_GTneo_GTneo2T-AndroidT-vendor-source vendor
+          echo "Загружаем вендорные модули..."
+          # Клонируем во временную папку, чтобы избежать дублирования vendor/vendor
+          git clone --depth=1 https://github.com/realme-kernel-opensource/realme_X7max_GTneo_GTneo2T-AndroidT-vendor-source vendor_tmp
+          
+          # Копируем содержимое в корень репозитория
+          cp -rn vendor_tmp/* .
+          rm -rf vendor_tmp
 
-          # Линкуем sched_assist, если Kconfig ищет его по пути kernel/sched_assist
+          # Автоматически находим sched_assist и делаем симлинк в kernel/
           mkdir -p kernel
-          if [ -d "vendor/oplus/kernel/sched_assist" ] && [ ! -d "kernel/sched_assist" ]; then
-            ln -sf ../vendor/oplus/kernel/sched_assist kernel/sched_assist
-            echo "Симлинк для sched_assist создан."
+          SCHED_DIR=$(find vendor/ -type d -name "sched_assist" 2>/dev/null | head -n 1)
+          
+          if [ -n "$SCHED_DIR" ]; then
+            echo "Найдена директория sched_assist по пути: $SCHED_DIR"
+            ln -sfn "../$SCHED_DIR" kernel/sched_assist
+          else
+            echo "sched_assist не найден в vendor, создаем пустую заглушку Kconfig..."
+            mkdir -p kernel/sched_assist
+            touch kernel/sched_assist/Kconfig
           fi
 
       - name: Install Build Dependencies
