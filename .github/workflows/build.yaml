@@ -74,22 +74,42 @@ jobs:
           
           echo "Конфигурация SukiSU успешно применена к $DEFCONFIG_PATH"
 
-      - name: Patch Missing OEM Files & Auto-Fix Kconfigs (Python Failsafe)
+      - name: Patch Missing OEM Files & Auto-Fix Kconfigs (Python Script)
         run: |
-          echo "1. Переносим найденные вендорные модули из vendor в дерево ядра..."
-          mkdir -p kernel/locking arch/arm64/kernel
+          cat << 'EOF' > fix_kconfigs.py
+          import os
+          import re
+          import shutil
 
-          # Копируем папки из vendor, если они существуют
-          [ -d "$(find vendor -type d -name 'sched_assist' | head -n 1)" ] && cp -r $(find vendor -type d -name 'sched_assist' | head -n 1) kernel/ || true
-          [ -d "$(find vendor -type d -name 'klockopt' | head -n 1)" ] && cp -r $(find vendor -type d -name 'klockopt' | head -n 1) kernel/locking/ || true
-          [ -d "$(find vendor -type d -name 'rootguard' | head -n 1)" ] && cp -r $(find vendor -type d -name 'rootguard' | head -n 1) arch/arm64/kernel/ || true
+          # 1. Безопасное копирование вендорных модулей
+          modules = [
+              ("sched_assist", "kernel/sched_assist"),
+              ("klockopt", "kernel/locking/klockopt"),
+              ("rootguard", "arch/arm64/kernel/rootguard")
+          ]
 
-          echo "2. Гарантированное сканирование всех Kconfig через Python..."
-          python3 -c '
-          import os, re
+          for mod_name, target_path in modules:
+              found_dir = None
+              for root, dirs, files in os.walk("vendor"):
+                  if mod_name in dirs:
+                      found_dir = os.path.join(root, mod_name)
+                      break
+              
+              if found_dir:
+                  print(f"[VENDOR] Найдено {mod_name}: {found_dir} -> {target_path}")
+                  # Удаляем прошлый файл или папку, если они уже есть
+                  if os.path.exists(target_path) or os.path.islink(target_path):
+                      if os.path.isdir(target_path) and not os.path.islink(target_path):
+                          shutil.rmtree(target_path)
+                      else:
+                          os.remove(target_path)
+                  
+                  os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                  shutil.copytree(found_dir, target_path)
 
+          # 2. Генерация заглушек для всех отсутствующих Kconfig
+          print("[KCONFIG] Сканирование файлов конфигурации...")
           for root, dirs, files in os.walk("."):
-              # Пропускаем служебные директории
               if any(ignored in root for ignored in ["out", ".git", "toolchain", "vendor_tmp"]):
                   continue
               for file in files:
@@ -98,16 +118,14 @@ jobs:
                       try:
                           with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
                               for line in f:
-                                  # Ищем любые вариации source и rsource (с кавычками и без)
-                                  match = re.search(r"^\s*(?:source|rsource)\s+[\"'\"]?([^\"'\s\n]+)", line)
+                                  match = re.search(r"^\s*(?:source|rsource)\s+[\"']?([^\"'\s\n]+)", line)
                                   if match:
                                       target_path = match.group(1).strip()
-                                      # Пропускаем динамические пути с переменными ядра
                                       if "$" in target_path:
                                           continue
                                       clean_path = os.path.normpath(target_path)
                                       if not os.path.exists(clean_path):
-                                          print(f"[FIX] Создаем заглушку Kconfig: {clean_path}")
+                                          print(f"[FIX] Создаем заглушку: {clean_path}")
                                           os.makedirs(os.path.dirname(clean_path), exist_ok=True)
                                           open(clean_path, "a").close()
                                           mf = os.path.join(os.path.dirname(clean_path), "Makefile")
@@ -115,8 +133,12 @@ jobs:
                                               open(mf, "a").close()
                       except Exception as e:
                           pass
-          '
+          EOF
 
+          # Запуск и очистка файла скрипта
+          python3 fix_kconfigs.py
+          rm -f fix_kconfigs.py
+      
       - name: Build Kernel
         run: |
           export PATH="$GITHUB_WORKSPACE/toolchain/clang/bin:$PATH"
