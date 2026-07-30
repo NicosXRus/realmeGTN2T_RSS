@@ -74,11 +74,38 @@ jobs:
           
           echo "Конфигурация SukiSU успешно применена к $DEFCONFIG_PATH"
 
-      - name: Patch Missing OEM Files
+      - name: Patch Missing OEM Files & Auto-Fix Kconfigs
         run: |
-          mkdir -p kernel/sched_assist
-          touch kernel/sched_assist/Kconfig
-          touch kernel/sched_assist/Makefile
+          echo "1. Ищем известные модули в vendor и переносим в kernel/..."
+          
+          # Перенос klockopt
+          KLOCKOPT_PATH=$(find vendor -type d -name "klockopt" | head -n 1)
+          if [ -n "$KLOCKOPT_PATH" ]; then
+            echo "Найдена директория klockopt: $KLOCKOPT_PATH"
+            mkdir -p kernel/locking
+            rm -rf kernel/locking/klockopt
+            cp -r "$KLOCKOPT_PATH" kernel/locking/
+          fi
+
+          # Перенос sched_assist
+          SCHED_PATH=$(find vendor -type d -name "sched_assist" | head -n 1)
+          if [ -n "$SCHED_PATH" ]; then
+            echo "Найдена директория sched_assist: $SCHED_PATH"
+            rm -rf kernel/sched_assist
+            cp -r "$SCHED_PATH" kernel/sched_assist
+          fi
+
+          echo "2. Автоматический поиск и создание заглушек для всех отсутствующих Kconfig..."
+          
+          # Сканируем init/Kconfig на все инклюды 'source "..."' и автосоздаем файлы, которых не хватает
+          grep -E '(source|rsource)' init/Kconfig | grep -oP '"\K[^"]+' | while read -r kconfig_file; do
+            if [ ! -f "$kconfig_file" ]; then
+              echo "Файл $kconfig_file не найден! Создаем директорию и заглушки..."
+              mkdir -p "$(dirname "$kconfig_file")"
+              touch "$kconfig_file"
+              touch "$(dirname "$kconfig_file")/Makefile"
+            fi
+          done
 
       - name: Build Kernel
         run: |
