@@ -74,6 +74,12 @@ jobs:
           
           echo "Конфигурация SukiSU успешно применена к $DEFCONFIG_PATH"
 
+      - name: Patch Missing OEM Files
+        run: |
+          mkdir -p kernel/sched_assist
+          touch kernel/sched_assist/Kconfig
+          touch kernel/sched_assist/Makefile
+
       - name: Build Kernel
         run: |
           export PATH="$GITHUB_WORKSPACE/toolchain/clang/bin:$PATH"
