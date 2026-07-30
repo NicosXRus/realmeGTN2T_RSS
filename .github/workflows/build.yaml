@@ -74,51 +74,55 @@ jobs:
           
           echo "Конфигурация SukiSU успешно применена к $DEFCONFIG_PATH"
 
-      - name: Patch Missing OEM Files & Auto-Fix ALL Kconfigs
+      - name: Patch Missing OEM Files & Auto-Fix Kconfigs
         run: |
-          echo "1. Ищем и копируем известные вендорные модули из vendor в kernel/..."
-          
-          # Копируем klockopt, если он есть в vendor
-          KLOCKOPT_PATH=$(find vendor -type d -name "klockopt" | head -n 1)
-          if [ -n "$KLOCKOPT_PATH" ]; then
-            echo "Найдена директория klockopt: $KLOCKOPT_PATH"
-            mkdir -p kernel/locking
-            rm -rf kernel/locking/klockopt
-            cp -r "$KLOCKOPT_PATH" kernel/locking/
-          fi
+          echo "1. Копируем найденные вендорные модули из vendor..."
 
-          # Копируем sched_assist, если он есть в vendor
-          SCHED_PATH=$(find vendor -type d -name "sched_assist" | head -n 1)
-          if [ -n "$SCHED_PATH" ]; then
-            echo "Найдена директория sched_assist: $SCHED_PATH"
-            rm -rf kernel/sched_assist
-            cp -r "$SCHED_PATH" kernel/sched_assist
-          fi
-
-          # Копируем rootguard, если он есть в vendor
-          ROOTGUARD_PATH=$(find vendor -type d -name "rootguard" | head -n 1)
-          if [ -n "$ROOTGUARD_PATH" ]; then
-            echo "Найдена директория rootguard: $ROOTGUARD_PATH"
-            mkdir -p arch/arm64/kernel
-            rm -rf arch/arm64/kernel/rootguard
-            cp -r "$ROOTGUARD_PATH" arch/arm64/kernel/
-          fi
-
-          echo "2. Полное сканирование ВСЕХ Kconfig файлов в дереве ядра..."
-          
-          # Сканируем вообще все Kconfig в репозитории на наличие строк source/rsource
-          find . -type f -name "Kconfig*" -exec grep -E '(source|rsource)' {} + | grep -oP '"\K[^"]+' | while read -r kconfig_file; do
-            # Убираем префикс ./ если есть
-            clean_path=$(echo "$kconfig_file" | sed 's/^\.\///')
+          # Функция для безопасного копирования найденных модулей
+          copy_vendor_module() {
+            local search_name="$1"
+            local target_dir="$2"
+            local found_path=$(find vendor -type d -name "$search_name" 2>/dev/null | head -n 1)
             
+            if [ -n "$found_path" ]; then
+              echo "Копируем $search_name из $found_path в $target_dir..."
+              mkdir -p "$target_dir"
+              rm -rf "$target_dir/$search_name"
+              cp -r "$found_path" "$target_dir/"
+            fi
+          }
+
+          copy_vendor_module "sched_assist" "kernel"
+          copy_vendor_module "klockopt" "kernel/locking"
+          copy_vendor_module "rootguard" "arch/arm64/kernel"
+
+          echo "2. Точечное сканирование только реальных директив source/rsource..."
+
+          # Находим ТОЛЬКО строки, строго начинающиеся с source "..." или rsource "..."
+          grep -rnE '^\s*(source|rsource)\s+"' . | grep -oP '^\s*(source|rsource)\s+"\K[^"]+' | sort -u | while read -r kconfig_path; do
+            # Игнорируем пути с переменными вида $(SRCARCH)
+            if [[ "$kconfig_path" =~ \$ ]]; then
+              continue
+            fi
+
+            # Очищаем относительный путь
+            clean_path=$(echo "$kconfig_path" | sed 's/^\.\///')
+
             if [ ! -f "$clean_path" ]; then
-              echo "Файл $clean_path не найден! Создаем заглушку..."
-              mkdir -p "$(dirname "$clean_path")"
-              touch "$clean_path"
+              dir_name=$(dirname "$clean_path")
               
-              # Если в этой папке нет Makefile, создаем и его
-              if [ ! -f "$(dirname "$clean_path")/Makefile" ]; then
-                touch "$(dirname "$clean_path")/Makefile"
+              # Если вместо папки случайно оказался файл, удаляем его
+              if [ -f "$dir_name" ]; then
+                rm -f "$dir_name"
+              fi
+              
+              echo "Создаем заглушку Kconfig: $clean_path"
+              mkdir -p "$dir_name"
+              touch "$clean_path"
+
+              # Создаем пустой Makefile в той же папке, если его нет
+              if [ ! -f "$dir_name/Makefile" ]; then
+                touch "$dir_name/Makefile"
               fi
             fi
           done
