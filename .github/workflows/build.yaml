@@ -74,11 +74,11 @@ jobs:
           
           echo "Конфигурация SukiSU успешно применена к $DEFCONFIG_PATH"
 
-      - name: Patch Missing OEM Files & Auto-Fix Kconfigs
+      - name: Patch Missing OEM Files & Auto-Fix ALL Kconfigs
         run: |
-          echo "1. Ищем известные модули в vendor и переносим в kernel/..."
+          echo "1. Ищем и копируем известные вендорные модули из vendor в kernel/..."
           
-          # Перенос klockopt
+          # Копируем klockopt, если он есть в vendor
           KLOCKOPT_PATH=$(find vendor -type d -name "klockopt" | head -n 1)
           if [ -n "$KLOCKOPT_PATH" ]; then
             echo "Найдена директория klockopt: $KLOCKOPT_PATH"
@@ -87,7 +87,7 @@ jobs:
             cp -r "$KLOCKOPT_PATH" kernel/locking/
           fi
 
-          # Перенос sched_assist
+          # Копируем sched_assist, если он есть в vendor
           SCHED_PATH=$(find vendor -type d -name "sched_assist" | head -n 1)
           if [ -n "$SCHED_PATH" ]; then
             echo "Найдена директория sched_assist: $SCHED_PATH"
@@ -95,15 +95,31 @@ jobs:
             cp -r "$SCHED_PATH" kernel/sched_assist
           fi
 
-          echo "2. Автоматический поиск и создание заглушек для всех отсутствующих Kconfig..."
+          # Копируем rootguard, если он есть в vendor
+          ROOTGUARD_PATH=$(find vendor -type d -name "rootguard" | head -n 1)
+          if [ -n "$ROOTGUARD_PATH" ]; then
+            echo "Найдена директория rootguard: $ROOTGUARD_PATH"
+            mkdir -p arch/arm64/kernel
+            rm -rf arch/arm64/kernel/rootguard
+            cp -r "$ROOTGUARD_PATH" arch/arm64/kernel/
+          fi
+
+          echo "2. Полное сканирование ВСЕХ Kconfig файлов в дереве ядра..."
           
-          # Сканируем init/Kconfig на все инклюды 'source "..."' и автосоздаем файлы, которых не хватает
-          grep -E '(source|rsource)' init/Kconfig | grep -oP '"\K[^"]+' | while read -r kconfig_file; do
-            if [ ! -f "$kconfig_file" ]; then
-              echo "Файл $kconfig_file не найден! Создаем директорию и заглушки..."
-              mkdir -p "$(dirname "$kconfig_file")"
-              touch "$kconfig_file"
-              touch "$(dirname "$kconfig_file")/Makefile"
+          # Сканируем вообще все Kconfig в репозитории на наличие строк source/rsource
+          find . -type f -name "Kconfig*" -exec grep -E '(source|rsource)' {} + | grep -oP '"\K[^"]+' | while read -r kconfig_file; do
+            # Убираем префикс ./ если есть
+            clean_path=$(echo "$kconfig_file" | sed 's/^\.\///')
+            
+            if [ ! -f "$clean_path" ]; then
+              echo "Файл $clean_path не найден! Создаем заглушку..."
+              mkdir -p "$(dirname "$clean_path")"
+              touch "$clean_path"
+              
+              # Если в этой папке нет Makefile, создаем и его
+              if [ ! -f "$(dirname "$clean_path")/Makefile" ]; then
+                touch "$(dirname "$clean_path")/Makefile"
+              fi
             fi
           done
 
