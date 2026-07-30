@@ -24,7 +24,7 @@ jobs:
           echo "1. Скачиваем репозиторий vendor-source..."
           git clone --depth=1 https://github.com/realme-kernel-opensource/realme_X7max_GTneo_GTneo2T-AndroidT-vendor-source vendor_tmp
           
-          # Распаковываем папку vendor в корень ядра
+          # Распаковываем vendor
           if [ -d "vendor_tmp/vendor" ]; then
             cp -r vendor_tmp/vendor .
           else
@@ -32,27 +32,20 @@ jobs:
           fi
           rm -rf vendor_tmp
 
-          # 2. Ищем sched_assist и копируем его в kernel/sched_assist
+          # 2. Удаляем старый/битый kernel/sched_assist, если он существует
+          rm -rf kernel/sched_assist
+
+          # 3. Находим sched_assist и копируем его на нужное место
           SCHED_PATH=$(find vendor -type d -name "sched_assist" | head -n 1)
           if [ -n "$SCHED_PATH" ]; then
             echo "Найдена директория sched_assist: $SCHED_PATH"
             mkdir -p kernel
-            cp -r "$SCHED_PATH" kernel/
-          fi
-
-          # 3. Гарантированная страховка: создаем Kconfig, если он отсутствует
-          mkdir -p kernel/sched_assist
-          if [ ! -f "kernel/sched_assist/Kconfig" ]; then
-            echo "Создаем гарантированную заглушку kernel/sched_assist/Kconfig..."
+            cp -r "$SCHED_PATH" kernel/sched_assist
+          else
+            echo "sched_assist не найден, создаем пустую заглушку Kconfig..."
+            mkdir -p kernel/sched_assist
             touch kernel/sched_assist/Kconfig
           fi
-
-      - name: Install Build Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            bc build-essential bison flex libssl-dev libncurses-dev \
-            libelf-dev clang lld llvm ccache zip unzip git wget
 
       - name: Setup Toolchain (Proton Clang)
         run: |
