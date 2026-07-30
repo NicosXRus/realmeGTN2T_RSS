@@ -6,7 +6,7 @@ on:
       defconfig:
         description: 'Путь к defconfig (относительно arch/arm64/configs/)'
         required: true
-        default: 'defconfig'
+        default: 'k6893v1_64_k419_defconfig'
 
 jobs:
   build:
