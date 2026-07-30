@@ -6,7 +6,7 @@ on:
       defconfig:
         description: 'Путь к defconfig (относительно arch/arm64/configs/)'
         required: true
-        default: 'vendor/RMX3357_defconfig' # Замените на точное имя вашего defconfig
+        default: 'defconfig' # Замените на точное имя вашего defconfig
 
 jobs:
   build:
