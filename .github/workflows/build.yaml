@@ -74,58 +74,48 @@ jobs:
           
           echo "Конфигурация SukiSU успешно применена к $DEFCONFIG_PATH"
 
-      - name: Patch Missing OEM Files & Auto-Fix Kconfigs
+      - name: Patch Missing OEM Files & Auto-Fix Kconfigs (Python Failsafe)
         run: |
-          echo "1. Копируем найденные вендорные модули из vendor..."
+          echo "1. Переносим найденные вендорные модули из vendor в дерево ядра..."
+          mkdir -p kernel/locking arch/arm64/kernel
 
-          # Функция для безопасного копирования найденных модулей
-          copy_vendor_module() {
-            local search_name="$1"
-            local target_dir="$2"
-            local found_path=$(find vendor -type d -name "$search_name" 2>/dev/null | head -n 1)
-            
-            if [ -n "$found_path" ]; then
-              echo "Копируем $search_name из $found_path в $target_dir..."
-              mkdir -p "$target_dir"
-              rm -rf "$target_dir/$search_name"
-              cp -r "$found_path" "$target_dir/"
-            fi
-          }
+          # Копируем папки из vendor, если они существуют
+          [ -d "$(find vendor -type d -name 'sched_assist' | head -n 1)" ] && cp -r $(find vendor -type d -name 'sched_assist' | head -n 1) kernel/ || true
+          [ -d "$(find vendor -type d -name 'klockopt' | head -n 1)" ] && cp -r $(find vendor -type d -name 'klockopt' | head -n 1) kernel/locking/ || true
+          [ -d "$(find vendor -type d -name 'rootguard' | head -n 1)" ] && cp -r $(find vendor -type d -name 'rootguard' | head -n 1) arch/arm64/kernel/ || true
 
-          copy_vendor_module "sched_assist" "kernel"
-          copy_vendor_module "klockopt" "kernel/locking"
-          copy_vendor_module "rootguard" "arch/arm64/kernel"
+          echo "2. Гарантированное сканирование всех Kconfig через Python..."
+          python3 -c '
+          import os, re
 
-          echo "2. Точечное сканирование только реальных директив source/rsource..."
-
-          # Находим ТОЛЬКО строки, строго начинающиеся с source "..." или rsource "..."
-          grep -rnE '^\s*(source|rsource)\s+"' . | grep -oP '^\s*(source|rsource)\s+"\K[^"]+' | sort -u | while read -r kconfig_path; do
-            # Игнорируем пути с переменными вида $(SRCARCH)
-            if [[ "$kconfig_path" =~ \$ ]]; then
-              continue
-            fi
-
-            # Очищаем относительный путь
-            clean_path=$(echo "$kconfig_path" | sed 's/^\.\///')
-
-            if [ ! -f "$clean_path" ]; then
-              dir_name=$(dirname "$clean_path")
-              
-              # Если вместо папки случайно оказался файл, удаляем его
-              if [ -f "$dir_name" ]; then
-                rm -f "$dir_name"
-              fi
-              
-              echo "Создаем заглушку Kconfig: $clean_path"
-              mkdir -p "$dir_name"
-              touch "$clean_path"
-
-              # Создаем пустой Makefile в той же папке, если его нет
-              if [ ! -f "$dir_name/Makefile" ]; then
-                touch "$dir_name/Makefile"
-              fi
-            fi
-          done
+          for root, dirs, files in os.walk("."):
+              # Пропускаем служебные директории
+              if any(ignored in root for ignored in ["out", ".git", "toolchain", "vendor_tmp"]):
+                  continue
+              for file in files:
+                  if "Kconfig" in file:
+                      filepath = os.path.join(root, file)
+                      try:
+                          with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                              for line in f:
+                                  # Ищем любые вариации source и rsource (с кавычками и без)
+                                  match = re.search(r"^\s*(?:source|rsource)\s+[\"'\"]?([^\"'\s\n]+)", line)
+                                  if match:
+                                      target_path = match.group(1).strip()
+                                      # Пропускаем динамические пути с переменными ядра
+                                      if "$" in target_path:
+                                          continue
+                                      clean_path = os.path.normpath(target_path)
+                                      if not os.path.exists(clean_path):
+                                          print(f"[FIX] Создаем заглушку Kconfig: {clean_path}")
+                                          os.makedirs(os.path.dirname(clean_path), exist_ok=True)
+                                          open(clean_path, "a").close()
+                                          mf = os.path.join(os.path.dirname(clean_path), "Makefile")
+                                          if not os.path.exists(mf):
+                                              open(mf, "a").close()
+                      except Exception as e:
+                          pass
+          '
 
       - name: Build Kernel
         run: |
