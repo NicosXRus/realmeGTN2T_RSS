@@ -23,10 +23,12 @@ jobs:
             bc build-essential bison flex libssl-dev libncurses-dev \
             libelf-dev clang lld llvm ccache zip unzip git wget
 
-      - name: Setup Toolchain (Proton Clang)
+      - name: Setup Toolchain (AOSP Clang r416390b)
         run: |
-          mkdir -p toolchain
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git toolchain/clang
+          mkdir -p toolchain/clang
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r416390b.tar.gz
+          tar -xzf clang-r416390b.tar.gz -C toolchain/clang
+          rm clang-r416390b.tar.gz
 
       - name: Inject SukiSU Ultra Driver & Defconfig Parameters
         run: |
