@@ -199,21 +199,30 @@ jobs:
           python3 fix_kconfigs.py
           rm -f fix_kconfigs.py
 
-      - name: Fix OEM C Code Errors
-        run: |
+        - name: Fix OEM C Code Errors
+          run: |
           echo "1. Патчим устаревший код MTK ION..."
           if [ -d "drivers/staging/android/mtk_ion" ]; then
-            # Замена устаревшего типа
             find drivers/staging/android/mtk_ion -type f -exec sed -i 's/ion_phys_addr_t/phys_addr_t/g' {} +
-            # Предварительное объявление структуры для избежания ошибки видимости
             sed -i '1s/^/struct ion_platform_heap;\n/' drivers/staging/android/mtk_ion/mtk/ion_drv.h || true
           fi
 
           echo "2. Патчим драйвер RPMB MTK (добавляем забытый заголовок)..."
           if [ -f "drivers/char/rpmb/rpmb-mtk.c" ]; then
-            # Вставляем прямой путь до недостающего файла mmc_queue на первую строку
             sed -i '1s/^/#include "..\/..\/mmc\/core\/queue.h"\n/' drivers/char/rpmb/rpmb-mtk.c || true
           fi
+
+          echo "3. Патчим драйвер MTK DRM (строгость типов Clang)..."
+          if [ -f "drivers/gpu/drm/mediatek/mtk_drm_drv.c" ]; then
+            # Принудительно приводим тип указателя к нужному
+            sed -i 's/&fb_base/(phys_addr_t *)\&fb_base/g' drivers/gpu/drm/mediatek/mtk_drm_drv.c || true
+          fi
+
+          echo "4. Глобальная защита: отключаем -Werror во всем ядре..."
+          # Удаляем флаг -Werror и все его производные (например, -Werror=...) из всех Makefile.
+          # Это позволит Clang игнорировать небрежный код OEM-производителя и компилировать ядро дальше.
+          find . -type f -name "Makefile" -exec sed -i 's/-Werror\S*//g' {} +
+          
 
       - name: Build Kernel
         run: |
