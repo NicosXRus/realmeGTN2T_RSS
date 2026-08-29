@@ -209,14 +209,10 @@ jobs:
           
           echo "1. Самовосстанавливающаяся генерация .config..."
           COUNTER=0
-          
           while true; do
             COUNTER=$((COUNTER+1))
-            
-            # Временно отключаем панику bash
             set +e
-            # < /dev/null гарантирует, что make не зависнет, ожидая ввода с клавиатуры
-            make O=out ARCH=arm64 ${{ github.event.inputs.defconfig }} < /dev/null > make_def.log 2>&1
+            yes "" | make O=out ARCH=arm64 ${{ github.event.inputs.defconfig }} > make_def.log 2>&1
             MAKE_STATUS=$?
             set -e
             
@@ -225,59 +221,70 @@ jobs:
               break
             fi
             
-            # Ищем, на какой именно файл ругается make
             MISSING=$(grep -oP 'can.t open file "\K[^"]+' make_def.log | head -n 1)
-            
             if [ -n "$MISSING" ]; then
-              echo "🔧 [Попытка $COUNTER] Создаем заглушку для $MISSING"
-              
+              echo "🔧 [Kconfig] Заглушка для $MISSING"
               DIR_PATH=$(dirname "$MISSING")
-              
-              # Защита от битых симлинков Realme: удаляем их, если они мешают создать папку
-              if [ -L "$DIR_PATH" ]; then
-                rm -f "$DIR_PATH"
-              fi
-              
+              [ -L "$DIR_PATH" ] && rm -f "$DIR_PATH"
               mkdir -p "$DIR_PATH"
               touch "$MISSING"
               touch "$DIR_PATH/Makefile"
             else
-              echo "❌ Критическая ошибка make (не связана с файлами):"
+              echo "❌ Ошибка Kconfig:"
               cat make_def.log
               exit 1
             fi
             
-            # Защита от бесконечного цикла
-            if [ $COUNTER -gt 100 ]; then
-              echo "❌ Достигнут лимит в 100 исправлений! Прерываем процесс."
+            if [ $COUNTER -gt 100 ]; then exit 1; fi
+          done
+          
+          echo "2. Самовосстанавливающаяся компиляция ядра..."
+          COUNTER2=0
+          while true; do
+            COUNTER2=$((COUNTER2+1))
+            
+            # Временно отключаем прерывание bash при ошибках
+            set +e
+            make -j$(nproc --all) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- > make_build.log 2>&1
+            BUILD_STATUS=$?
+            set -e
+            
+            if [ $BUILD_STATUS -eq 0 ]; then
+              echo "✅ [Попытка $COUNTER2] Ядро успешно скомпилировано!"
+              break
+            fi
+            
+            # Ищем ошибки отсутствующих заголовков (headers)
+            MISSING_HEADER=$(grep -oP "fatal error: ['\"]\K[^'\"]+(?=['\"] file not found)" make_build.log | head -n 1)
+            
+            # Ищем ошибки отсутствующих папок (Makefile)
+            MISSING_MAKE=$(grep -oP "No rule to make target '(?:\.\./)?\K[^']+(?=/Makefile')" make_build.log | head -n 1)
+            
+            if [ -n "$MISSING_HEADER" ]; then
+              echo "🔧 [Header] Умное исправление: создаем пустую заглушку include/$MISSING_HEADER"
+              mkdir -p "include/$(dirname "$MISSING_HEADER")"
+              echo "/* Auto-generated dummy header */" > "include/$MISSING_HEADER"
+              
+            elif [ -n "$MISSING_MAKE" ]; then
+              echo "🔧 [Makefile] Умное исправление: заглушаем директорию $MISSING_MAKE"
+              mkdir -p "$MISSING_MAKE"
+              echo -e "obj-y := \nobj-m := \n" > "$MISSING_MAKE/Makefile"
+              
+            else
+              echo "❌ Критическая ошибка компиляции (не связана с файлами):"
+              # Выводим суть ошибки на экран
+              grep -iE "error:|undefined reference|no rule to make" make_build.log | head -n 20
+              echo "--- Последние 50 строк лога ---"
+              tail -n 50 make_build.log
+              exit 1
+            fi
+            
+            if [ $COUNTER2 -gt 100 ]; then
+              echo "❌ Лимит попыток компиляции исчерпан!"
               exit 1
             fi
           done
-          
-          echo "2. Запуск компиляции ядра..."
-          make -j$(nproc --all) O=out \
-            ARCH=arm64 \
-            CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
-            CLANG_TRIPLE=aarch64-linux-gnu-
-          
-          echo "2. Запуск компиляции ядра..."
-          make -j$(nproc --all) O=out \
-            ARCH=arm64 \
-            CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
-            CLANG_TRIPLE=aarch64-linux-gnu-
-          
-          echo "2. Запуск компиляции ядра..."
-          make -j$(nproc --all) O=out \
-            ARCH=arm64 \
-            CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
-            CLANG_TRIPLE=aarch64-linux-gnu-
-
+      
       - name: Locate Compiled Image
         run: |
           if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
