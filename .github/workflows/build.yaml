@@ -149,11 +149,15 @@ jobs:
           mkdir -p out
           
           echo "1. Самовосстанавливающаяся генерация .config..."
-          # Этот цикл сам исправит любые отсутствующие Kconfig файлы
           while true; do
+            # Временно отключаем авто-закрытие при ошибках
+            set +e
             make O=out ARCH=arm64 ${{ github.event.inputs.defconfig }} > make_def.log 2>&1
+            MAKE_STATUS=$?
+            # Включаем обратно
+            set -e
             
-            if [ $? -eq 0 ]; then
+            if [ $MAKE_STATUS -eq 0 ]; then
               echo "✅ defconfig успешно сгенерирован!"
               break
             fi
@@ -172,6 +176,14 @@ jobs:
               exit 1
             fi
           done
+          
+          echo "2. Запуск компиляции ядра..."
+          make -j$(nproc --all) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
+            CLANG_TRIPLE=aarch64-linux-gnu-
           
           echo "2. Запуск компиляции ядра..."
           make -j$(nproc --all) O=out \
