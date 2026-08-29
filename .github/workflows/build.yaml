@@ -88,7 +88,7 @@ jobs:
               ("rootguard", "arch/arm64/kernel/rootguard"),
               ("uxio_first", "block/uxio_first"),
               ("keventupload", "kernel/keventupload"),
-              ("oplus_ion", "drivers/staging/android/mtk_ion/oplus_ion") # <-- Добавлен oplus_ion
+              ("oplus_ion", "drivers/staging/android/mtk_ion/oplus_ion")
           ]
 
           for mod_name, target_path in modules:
@@ -111,7 +111,6 @@ jobs:
           # 1.5 Интеграция заголовочных файлов (Headers)
           print("[HEADERS] Поиск и слияние заголовочных файлов из vendor...")
           for root, dirs, files in os.walk("vendor"):
-              # Если находим любую папку include у вендора — сливаем её с системной include/
               if os.path.basename(root) == "include":
                   try:
                       shutil.copytree(root, "include", dirs_exist_ok=True)
@@ -119,10 +118,15 @@ jobs:
                   except Exception:
                       pass
               
-              # Точечный поиск конкретно sched_assist_mutex.h (на случай нестандартного расположения)
               if "sched_assist_mutex.h" in files:
                   src = os.path.join(root, "sched_assist_mutex.h")
                   dest_dir = "include/linux/sched_assist"
+                  
+                  # УМНАЯ ЗАЩИТА: удаляем файл/симлинк, если он мешает создать папку
+                  if os.path.exists(dest_dir) or os.path.islink(dest_dir):
+                      if not os.path.isdir(dest_dir):
+                          os.remove(dest_dir)
+                          
                   os.makedirs(dest_dir, exist_ok=True)
                   shutil.copy(src, os.path.join(dest_dir, "sched_assist_mutex.h"))
                   print(f"[HEADERS] Точечно скопирован: {src} -> {dest_dir}")
@@ -146,6 +150,11 @@ jobs:
                                       clean_path = os.path.normpath(target_path)
                                       if not os.path.exists(clean_path):
                                           print(f"[FIX-KCONF] Создаем заглушку: {clean_path}")
+                                          
+                                          # Защита пути Kconfig
+                                          if os.path.exists(os.path.dirname(clean_path)) and not os.path.isdir(os.path.dirname(clean_path)):
+                                              os.remove(os.path.dirname(clean_path))
+                                              
                                           os.makedirs(os.path.dirname(clean_path), exist_ok=True)
                                           open(clean_path, "a").close()
                                           mf = os.path.join(os.path.dirname(clean_path), "Makefile")
@@ -173,6 +182,12 @@ jobs:
                                           target_dir = os.path.join(root, dir_name)
                                           if not os.path.exists(target_dir):
                                               print(f"[FIX-MAKE] Заглушаем отсутствующую папку: {target_dir}")
+                                              
+                                              # Защита пути Makefile
+                                              if os.path.exists(target_dir) or os.path.islink(target_dir):
+                                                  if not os.path.isdir(target_dir):
+                                                      os.remove(target_dir)
+                                                      
                                               os.makedirs(target_dir, exist_ok=True)
                                               with open(os.path.join(target_dir, "Makefile"), "w") as target_mf:
                                                   target_mf.write("obj-y := \nobj-m := \n")
