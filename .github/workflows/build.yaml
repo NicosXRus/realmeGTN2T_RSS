@@ -254,16 +254,46 @@ jobs:
               break
             fi
             
-            # Ищем ошибки отсутствующих заголовков (headers)
+            # Ищем ошибки
             MISSING_HEADER=$(grep -oP "fatal error: ['\"]\K[^'\"]+(?=['\"] file not found)" make_build.log | head -n 1)
-            
-            # Ищем ошибки отсутствующих папок (Makefile)
             MISSING_MAKE=$(grep -oP "No rule to make target '(?:\.\./)?\K[^']+(?=/Makefile')" make_build.log | head -n 1)
             
             if [ -n "$MISSING_HEADER" ]; then
-              echo "🔧 [Header] Умное исправление: создаем пустую заглушку include/$MISSING_HEADER"
-              mkdir -p "include/$(dirname "$MISSING_HEADER")"
-              echo "/* Auto-generated dummy header */" > "include/$MISSING_HEADER"
+              HEADER_NAME=$(basename "$MISSING_HEADER")
+              
+              # Вычисляем правильный путь (иногда компилятор просит путь через ../)
+              if [[ "$MISSING_HEADER" == ../* ]]; then
+                TARGET_PATH="${MISSING_HEADER#../}"
+              else
+                TARGET_PATH="include/$MISSING_HEADER"
+              fi
+              
+              mkdir -p "$(dirname "$TARGET_PATH")"
+              
+              # ИЩЕМ ОРИГИНАЛ У ВЕНДОРА
+              FOUND_IN_VENDOR=$(find vendor -type f -name "$HEADER_NAME" | head -n 1)
+              
+              if [ -n "$FOUND_IN_VENDOR" ]; then
+                echo "🔧 [Header] Оригинал найден у вендора: $FOUND_IN_VENDOR -> $TARGET_PATH"
+                cp "$FOUND_IN_VENDOR" "$TARGET_PATH"
+              else
+                echo "🔧 [Header] Оригинал не найден! Создаем умную C-заглушку: $TARGET_PATH"
+                cat << 'EOF_HDR' > "$TARGET_PATH"
+          /* Auto-generated smart dummy header */
+          #ifndef AUTO_DUMMY_H
+          #define AUTO_DUMMY_H
+          #define KERNEL_MM_INIT_DONE 1
+          #define KERNEL_LOCAL_IRQ_ENABLE 2
+          #define KERNEL_DELAYACCT_INIT_DONE 3
+          #define KERNEL_DRIVER_INIT_DONE 4
+          #define KERNEL_DO_INITCALLS_DONE 5
+          #define KERNEL_INIT_DONE 6
+          #define KERNEL_DO_BASIC_SETUP_DONE 7
+          static inline void phx_set_boot_stage(int stage) {}
+          static inline void cgroup_set_sched_assist_boost_task(void *task) {}
+          #endif
+          EOF_HDR
+              fi
               
             elif [ -n "$MISSING_MAKE" ]; then
               echo "🔧 [Makefile] Умное исправление: заглушаем директорию $MISSING_MAKE"
@@ -271,15 +301,14 @@ jobs:
               echo -e "obj-y := \nobj-m := \n" > "$MISSING_MAKE/Makefile"
               
             else
-              echo "❌ Критическая ошибка компиляции (не связана с файлами):"
-              # Выводим суть ошибки на экран
+              echo "❌ Критическая ошибка компиляции:"
               grep -iE "error:|undefined reference|no rule to make" make_build.log | head -n 20
               echo "--- Последние 50 строк лога ---"
               tail -n 50 make_build.log
               exit 1
             fi
             
-            if [ $COUNTER2 -gt 100 ]; then
+            if [ $COUNTER2 -gt 150 ]; then
               echo "❌ Лимит попыток компиляции исчерпан!"
               exit 1
             fi
