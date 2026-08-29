@@ -209,9 +209,6 @@ jobs:
 
       - name: Build Kernel
         run: |
-
-      - name: Build Kernel
-        run: |
           export PATH="$GITHUB_WORKSPACE/toolchain/clang/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
@@ -281,7 +278,7 @@ jobs:
               
               TARGET_DIR="$(dirname "$TARGET_PATH")"
               
-              # УМНАЯ ЗАЩИТА: удаляем файл/симлинк, если он мешает создать папку
+              # УМНАЯ ЗАЩИТА 1: удаляем файл/симлинк, если он мешает создать папку
               if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
                 if [ ! -d "$TARGET_DIR" ]; then
                   rm -f "$TARGET_DIR"
@@ -289,6 +286,9 @@ jobs:
               fi
               
               mkdir -p "$TARGET_DIR"
+              
+              # УМНАЯ ЗАЩИТА 2: удаляем битый симлинк, если он висит на месте самого файла
+              rm -f "$TARGET_PATH"
               
               # ИЩЕМ ОРИГИНАЛ У ВЕНДОРА
               FOUND_IN_VENDOR=$(find vendor -type f -name "$HEADER_NAME" | head -n 1)
@@ -318,7 +318,6 @@ jobs:
             elif [ -n "$MISSING_MAKE" ]; then
               echo "🔧 [Makefile] Умное исправление: заглушаем директорию $MISSING_MAKE"
               
-              # УМНАЯ ЗАЩИТА для Makefiles
               if [ -e "$MISSING_MAKE" ] || [ -L "$MISSING_MAKE" ]; then
                 if [ ! -d "$MISSING_MAKE" ]; then
                   rm -f "$MISSING_MAKE"
