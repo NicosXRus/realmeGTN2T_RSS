@@ -85,7 +85,7 @@ jobs:
           modules = [
               ("sched_assist", "kernel/sched_assist"),
               ("klockopt", "kernel/locking/klockopt"),
-              ("rootguard", "arch/arm64/kernel/rootguard")
+              ("rootguard", "arch/arm64/kernel/rootguard"),
               ("uxio_first", "block/uxio_first")
           ]
 
