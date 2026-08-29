@@ -262,37 +262,27 @@ jobs:
               break
             fi
             
-            # Ищем ошибки
+            # Ищем 3 типа ошибок
             MISSING_HEADER=$(grep -oP "fatal error: ['\"]\K[^'\"]+(?=['\"] file not found)" make_build.log | head -n 1)
             MISSING_MAKE=$(grep -oP "No rule to make target '(?:\.\./)?\K[^']+(?=/Makefile')" make_build.log | head -n 1)
+            MISSING_OBJ=$(grep -oP "No rule to make target '(?:\.\./)?\K[^']+\.o(?=')" make_build.log | head -n 1)
             
             if [ -n "$MISSING_HEADER" ]; then
               HEADER_NAME=$(basename "$MISSING_HEADER")
-              
-              # Вычисляем правильный путь
               if [[ "$MISSING_HEADER" == ../* ]]; then
                 TARGET_PATH="${MISSING_HEADER#../}"
               else
                 TARGET_PATH="include/$MISSING_HEADER"
               fi
-              
               TARGET_DIR="$(dirname "$TARGET_PATH")"
               
-              # УМНАЯ ЗАЩИТА 1: удаляем файл/симлинк, если он мешает создать папку
               if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
-                if [ ! -d "$TARGET_DIR" ]; then
-                  rm -f "$TARGET_DIR"
-                fi
+                [ ! -d "$TARGET_DIR" ] && rm -f "$TARGET_DIR"
               fi
-              
               mkdir -p "$TARGET_DIR"
-              
-              # УМНАЯ ЗАЩИТА 2: удаляем битый симлинк, если он висит на месте самого файла
               rm -f "$TARGET_PATH"
               
-              # ИЩЕМ ОРИГИНАЛ У ВЕНДОРА
               FOUND_IN_VENDOR=$(find vendor -type f -name "$HEADER_NAME" | head -n 1)
-              
               if [ -n "$FOUND_IN_VENDOR" ]; then
                 echo "🔧 [Header] Оригинал найден у вендора: $FOUND_IN_VENDOR -> $TARGET_PATH"
                 cp "$FOUND_IN_VENDOR" "$TARGET_PATH"
@@ -317,16 +307,35 @@ jobs:
               
             elif [ -n "$MISSING_MAKE" ]; then
               echo "🔧 [Makefile] Умное исправление: заглушаем директорию $MISSING_MAKE"
-              
               if [ -e "$MISSING_MAKE" ] || [ -L "$MISSING_MAKE" ]; then
-                if [ ! -d "$MISSING_MAKE" ]; then
-                  rm -f "$MISSING_MAKE"
-                fi
+                [ ! -d "$MISSING_MAKE" ] && rm -f "$MISSING_MAKE"
               fi
-              
               mkdir -p "$MISSING_MAKE"
               echo -e "obj-y := \nobj-m := \n" > "$MISSING_MAKE/Makefile"
               
+            elif [ -n "$MISSING_OBJ" ]; then
+              # Превращаем .o в .c
+              TARGET_C="${MISSING_OBJ%.o}.c"
+              C_FILENAME=$(basename "$TARGET_C")
+              TARGET_DIR="$(dirname "$TARGET_C")"
+              
+              echo "🔧 [Source] Ищем исходник для $MISSING_OBJ..."
+              
+              if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
+                [ ! -d "$TARGET_DIR" ] && rm -f "$TARGET_DIR"
+              fi
+              mkdir -p "$TARGET_DIR"
+              rm -f "$TARGET_C"
+              
+              FOUND_IN_VENDOR=$(find vendor -type f -name "$C_FILENAME" | head -n 1)
+              if [ -n "$FOUND_IN_VENDOR" ]; then
+                echo "🔧 [Source] Оригинал найден у вендора: $FOUND_IN_VENDOR -> $TARGET_C"
+                cp "$FOUND_IN_VENDOR" "$TARGET_C"
+              else
+                echo "🔧 [Source] Оригинал не найден! Создаем пустую C-заглушку: $TARGET_C"
+                echo "/* Auto-generated dummy C file */" > "$TARGET_C"
+              fi
+
             else
               echo "❌ Критическая ошибка компиляции:"
               grep -iE "error:|undefined reference|no rule to make" make_build.log | head -n 20
