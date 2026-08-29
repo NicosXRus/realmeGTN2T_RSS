@@ -149,16 +149,20 @@ jobs:
           mkdir -p out
           
           echo "1. Самовосстанавливающаяся генерация .config..."
+          COUNTER=0
+          
           while true; do
-            # Временно отключаем авто-закрытие при ошибках
+            COUNTER=$((COUNTER+1))
+            
+            # Временно отключаем панику bash
             set +e
-            make O=out ARCH=arm64 ${{ github.event.inputs.defconfig }} > make_def.log 2>&1
+            # < /dev/null гарантирует, что make не зависнет, ожидая ввода с клавиатуры
+            make O=out ARCH=arm64 ${{ github.event.inputs.defconfig }} < /dev/null > make_def.log 2>&1
             MAKE_STATUS=$?
-            # Включаем обратно
             set -e
             
             if [ $MAKE_STATUS -eq 0 ]; then
-              echo "✅ defconfig успешно сгенерирован!"
+              echo "✅ [Попытка $COUNTER] defconfig успешно сгенерирован!"
               break
             fi
             
@@ -166,16 +170,38 @@ jobs:
             MISSING=$(grep -oP 'can.t open file "\K[^"]+' make_def.log | head -n 1)
             
             if [ -n "$MISSING" ]; then
-              echo "🔧 Умное исправление: создаем заглушку для $MISSING"
-              mkdir -p "$(dirname "$MISSING")"
+              echo "🔧 [Попытка $COUNTER] Создаем заглушку для $MISSING"
+              
+              DIR_PATH=$(dirname "$MISSING")
+              
+              # Защита от битых симлинков Realme: удаляем их, если они мешают создать папку
+              if [ -L "$DIR_PATH" ]; then
+                rm -f "$DIR_PATH"
+              fi
+              
+              mkdir -p "$DIR_PATH"
               touch "$MISSING"
-              touch "$(dirname "$MISSING")/Makefile"
+              touch "$DIR_PATH/Makefile"
             else
-              echo "❌ Критическая ошибка make (не связана с отсутствием файлов):"
+              echo "❌ Критическая ошибка make (не связана с файлами):"
               cat make_def.log
               exit 1
             fi
+            
+            # Защита от бесконечного цикла
+            if [ $COUNTER -gt 100 ]; then
+              echo "❌ Достигнут лимит в 100 исправлений! Прерываем процесс."
+              exit 1
+            fi
           done
+          
+          echo "2. Запуск компиляции ядра..."
+          make -j$(nproc --all) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
+            CLANG_TRIPLE=aarch64-linux-gnu-
           
           echo "2. Запуск компиляции ядра..."
           make -j$(nproc --all) O=out \
