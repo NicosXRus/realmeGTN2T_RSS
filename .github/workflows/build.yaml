@@ -87,7 +87,8 @@ jobs:
               ("klockopt", "kernel/locking/klockopt"),
               ("rootguard", "arch/arm64/kernel/rootguard"),
               ("uxio_first", "block/uxio_first"),
-              ("keventupload", "kernel/keventupload")
+              ("keventupload", "kernel/keventupload"),
+              ("oplus_ion", "drivers/staging/android/mtk_ion/oplus_ion") # <-- Добавлен oplus_ion
           ]
 
           for mod_name, target_path in modules:
@@ -106,6 +107,25 @@ jobs:
                           os.remove(target_path)
                   os.makedirs(os.path.dirname(target_path), exist_ok=True)
                   shutil.copytree(found_dir, target_path)
+
+          # 1.5 Интеграция заголовочных файлов (Headers)
+          print("[HEADERS] Поиск и слияние заголовочных файлов из vendor...")
+          for root, dirs, files in os.walk("vendor"):
+              # Если находим любую папку include у вендора — сливаем её с системной include/
+              if os.path.basename(root) == "include":
+                  try:
+                      shutil.copytree(root, "include", dirs_exist_ok=True)
+                      print(f"[HEADERS] Успешное слияние: {root} -> include/")
+                  except Exception:
+                      pass
+              
+              # Точечный поиск конкретно sched_assist_mutex.h (на случай нестандартного расположения)
+              if "sched_assist_mutex.h" in files:
+                  src = os.path.join(root, "sched_assist_mutex.h")
+                  dest_dir = "include/linux/sched_assist"
+                  os.makedirs(dest_dir, exist_ok=True)
+                  shutil.copy(src, os.path.join(dest_dir, "sched_assist_mutex.h"))
+                  print(f"[HEADERS] Точечно скопирован: {src} -> {dest_dir}")
 
           # 2. Генерация заглушек для всех отсутствующих Kconfig
           print("[KCONFIG] Сканирование файлов конфигурации...")
@@ -135,7 +155,7 @@ jobs:
                       except Exception:
                           pass
 
-          # 3. УМНОЕ ИСПРАВЛЕНИЕ MAKEFILE (НОВОЕ)
+          # 3. УМНОЕ ИСПРАВЛЕНИЕ MAKEFILE
           print("[MAKEFILE] Сканирование Makefile на отсутствующие директории...")
           for root, dirs, files in os.walk("."):
               if any(ignored in root for ignored in ["out", ".git", "toolchain", "vendor_tmp"]):
@@ -145,7 +165,6 @@ jobs:
                   try:
                       with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
                           for line in f:
-                              # Ищем строки, где добавляются папки (например, obj-y += keventupload/)
                               if re.search(r'^\s*obj-[ym\$\(\)A-Z_a-z]+\s*\+=', line):
                                   parts = line.split("+=")[1].split()
                                   for part in parts:
