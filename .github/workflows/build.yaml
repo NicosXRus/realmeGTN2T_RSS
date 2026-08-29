@@ -261,14 +261,23 @@ jobs:
             if [ -n "$MISSING_HEADER" ]; then
               HEADER_NAME=$(basename "$MISSING_HEADER")
               
-              # Вычисляем правильный путь (иногда компилятор просит путь через ../)
+              # Вычисляем правильный путь
               if [[ "$MISSING_HEADER" == ../* ]]; then
                 TARGET_PATH="${MISSING_HEADER#../}"
               else
                 TARGET_PATH="include/$MISSING_HEADER"
               fi
               
-              mkdir -p "$(dirname "$TARGET_PATH")"
+              TARGET_DIR="$(dirname "$TARGET_PATH")"
+              
+              # УМНАЯ ЗАЩИТА: удаляем файл/симлинк, если он мешает создать папку
+              if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
+                if [ ! -d "$TARGET_DIR" ]; then
+                  rm -f "$TARGET_DIR"
+                fi
+              fi
+              
+              mkdir -p "$TARGET_DIR"
               
               # ИЩЕМ ОРИГИНАЛ У ВЕНДОРА
               FOUND_IN_VENDOR=$(find vendor -type f -name "$HEADER_NAME" | head -n 1)
@@ -297,6 +306,14 @@ jobs:
               
             elif [ -n "$MISSING_MAKE" ]; then
               echo "🔧 [Makefile] Умное исправление: заглушаем директорию $MISSING_MAKE"
+              
+              # УМНАЯ ЗАЩИТА для Makefiles
+              if [ -e "$MISSING_MAKE" ] || [ -L "$MISSING_MAKE" ]; then
+                if [ ! -d "$MISSING_MAKE" ]; then
+                  rm -f "$MISSING_MAKE"
+                fi
+              fi
+              
               mkdir -p "$MISSING_MAKE"
               echo -e "obj-y := \nobj-m := \n" > "$MISSING_MAKE/Makefile"
               
