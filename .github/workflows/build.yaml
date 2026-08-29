@@ -199,12 +199,20 @@ jobs:
           python3 fix_kconfigs.py
           rm -f fix_kconfigs.py
 
-      - name: Fix MediaTek ION Driver Code
+      - name: Fix OEM C Code Errors
         run: |
-          echo "Патчим устаревший код MTK ION: меняем ion_phys_addr_t на phys_addr_t..."
+          echo "1. Патчим устаревший код MTK ION..."
           if [ -d "drivers/staging/android/mtk_ion" ]; then
+            # Замена устаревшего типа
             find drivers/staging/android/mtk_ion -type f -exec sed -i 's/ion_phys_addr_t/phys_addr_t/g' {} +
-            echo "Патч успешно применен!"
+            # Предварительное объявление структуры для избежания ошибки видимости
+            sed -i '1s/^/struct ion_platform_heap;\n/' drivers/staging/android/mtk_ion/mtk/ion_drv.h || true
+          fi
+
+          echo "2. Патчим драйвер RPMB MTK (добавляем забытый заголовок)..."
+          if [ -f "drivers/char/rpmb/rpmb-mtk.c" ]; then
+            # Вставляем прямой путь до недостающего файла mmc_queue на первую строку
+            sed -i '1s/^/#include "..\/..\/mmc\/core\/queue.h"\n/' drivers/char/rpmb/rpmb-mtk.c || true
           fi
 
       - name: Build Kernel
