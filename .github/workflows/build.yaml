@@ -86,7 +86,8 @@ jobs:
               ("sched_assist", "kernel/sched_assist"),
               ("klockopt", "kernel/locking/klockopt"),
               ("rootguard", "arch/arm64/kernel/rootguard"),
-              ("uxio_first", "block/uxio_first")
+              ("uxio_first", "block/uxio_first"),
+              ("keventupload", "kernel/keventupload")
           ]
 
           for mod_name, target_path in modules:
@@ -98,13 +99,11 @@ jobs:
               
               if found_dir:
                   print(f"[VENDOR] Найдено {mod_name}: {found_dir} -> {target_path}")
-                  # Удаляем прошлый файл или папку, если они уже есть
                   if os.path.exists(target_path) or os.path.islink(target_path):
                       if os.path.isdir(target_path) and not os.path.islink(target_path):
                           shutil.rmtree(target_path)
                       else:
                           os.remove(target_path)
-                  
                   os.makedirs(os.path.dirname(target_path), exist_ok=True)
                   shutil.copytree(found_dir, target_path)
 
@@ -126,19 +125,43 @@ jobs:
                                           continue
                                       clean_path = os.path.normpath(target_path)
                                       if not os.path.exists(clean_path):
-                                          print(f"[FIX] Создаем заглушку: {clean_path}")
+                                          print(f"[FIX-KCONF] Создаем заглушку: {clean_path}")
                                           os.makedirs(os.path.dirname(clean_path), exist_ok=True)
                                           open(clean_path, "a").close()
                                           mf = os.path.join(os.path.dirname(clean_path), "Makefile")
                                           if not os.path.exists(mf):
                                               with open(mf, "w") as makefile:
-                                                  makefile.write("obj-y := \n")
-                                                  makefile.write("obj-m := \n")
-                      except Exception as e:
+                                                  makefile.write("obj-y := \nobj-m := \n")
+                      except Exception:
+                          pass
+
+          # 3. УМНОЕ ИСПРАВЛЕНИЕ MAKEFILE (НОВОЕ)
+          print("[MAKEFILE] Сканирование Makefile на отсутствующие директории...")
+          for root, dirs, files in os.walk("."):
+              if any(ignored in root for ignored in ["out", ".git", "toolchain", "vendor_tmp"]):
+                  continue
+              if "Makefile" in files:
+                  filepath = os.path.join(root, "Makefile")
+                  try:
+                      with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                          for line in f:
+                              # Ищем строки, где добавляются папки (например, obj-y += keventupload/)
+                              if re.search(r'^\s*obj-[ym\$\(\)A-Z_a-z]+\s*\+=', line):
+                                  parts = line.split("+=")[1].split()
+                                  for part in parts:
+                                      if part.endswith('/'):
+                                          dir_name = part[:-1]
+                                          target_dir = os.path.join(root, dir_name)
+                                          if not os.path.exists(target_dir):
+                                              print(f"[FIX-MAKE] Заглушаем отсутствующую папку: {target_dir}")
+                                              os.makedirs(target_dir, exist_ok=True)
+                                              with open(os.path.join(target_dir, "Makefile"), "w") as target_mf:
+                                                  target_mf.write("obj-y := \nobj-m := \n")
+                  except Exception:
                           pass
           EOF
 
-          # Запуск и очистка файла скрипта
+          # Запуск скрипта
           python3 fix_kconfigs.py
           rm -f fix_kconfigs.py
       
