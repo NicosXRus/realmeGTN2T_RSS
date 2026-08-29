@@ -131,7 +131,9 @@ jobs:
                                           open(clean_path, "a").close()
                                           mf = os.path.join(os.path.dirname(clean_path), "Makefile")
                                           if not os.path.exists(mf):
-                                              open(mf, "a").close()
+                                              with open(mf, "w") as makefile:
+                                                  makefile.write("obj-y := \n")
+                                                  makefile.write("obj-m := \n")
                       except Exception as e:
                           pass
           EOF
