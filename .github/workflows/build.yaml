@@ -206,15 +206,10 @@ jobs:
           fi
 
           echo "6. Патчим Oplus Process Reclaim (ошибки аргументов и хуков)..."
-          if [ -f "mm/process_mm_reclaim.c" ]; then
-            # Элегантно добавляем 3-й аргумент (0) в функцию
-            sed -i 's/&page_list, vma/&, 0/g' mm/process_mm_reclaim.c || true
-            
-            # Создаем фейковые макросы-заглушки для Vendor Hooks прямо в начале файла
-            sed -i '1s/^/#define register_trace_android_vh_check_process_reclaimer(cb, data) 0\n#define unregister_trace_android_vh_check_process_reclaimer(cb, data)\n/' mm/process_mm_reclaim.c || true
-          fi
+          # Важно: патчим исходники прямо в папке vendor, чтобы скрипт-ищейка забрал уже исправленный файл!
+          find vendor -type f -name "process_mm_reclaim.c" -exec sed -i 's/&page_list, vma/&, 0/g' {} +
+          find vendor -type f -name "process_mm_reclaim.c" -exec sed -i '1s/^/#define register_trace_android_vh_check_process_reclaimer(cb, data) 0\n#define unregister_trace_android_vh_check_process_reclaimer(cb, data)\n/' {} +
           
-          # Отключаем строгие проверки для всей папки подсистемы памяти (mm)
           if [ -f "mm/Makefile" ]; then
             echo "ccflags-y += -Wno-error" >> mm/Makefile
           fi
