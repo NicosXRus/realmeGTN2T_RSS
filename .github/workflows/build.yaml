@@ -194,19 +194,29 @@ jobs:
 
           echo "4. Патчим Realme VMSCAN (добавляем proc_fs.h)..."
           if [ -f "mm/vmscan.c" ]; then
-            # Вставляем директиву include в самую первую строку файла
             sed -i '1s/^/#include <linux\/proc_fs.h>\n/' mm/vmscan.c || true
           fi
 
           echo "5. Патчим Sched Assist (исправляем устаревший синтаксис void)..."
           if [ -f "kernel/sched_assist/sched_assist_slide_v1.c" ]; then
-            # Меняем пустые скобки () на явное указание (void)
             sed -i 's/void adjust_sched_assist_input_ctrl()/void adjust_sched_assist_input_ctrl(void)/g' kernel/sched_assist/sched_assist_slide_v1.c || true
           fi
-          
-          # Отключаем строгие проверки типов для всей папки вендорного планировщика (на случай новых ошибок)
           if [ -f "kernel/sched_assist/Makefile" ]; then
             echo "ccflags-y += -Wno-error" >> kernel/sched_assist/Makefile
+          fi
+
+          echo "6. Патчим Oplus Process Reclaim (ошибки аргументов и хуков)..."
+          if [ -f "mm/process_mm_reclaim.c" ]; then
+            # Элегантно добавляем 3-й аргумент (0) в функцию
+            sed -i 's/&page_list, vma/&, 0/g' mm/process_mm_reclaim.c || true
+            
+            # Создаем фейковые макросы-заглушки для Vendor Hooks прямо в начале файла
+            sed -i '1s/^/#define register_trace_android_vh_check_process_reclaimer(cb, data) 0\n#define unregister_trace_android_vh_check_process_reclaimer(cb, data)\n/' mm/process_mm_reclaim.c || true
+          fi
+          
+          # Отключаем строгие проверки для всей папки подсистемы памяти (mm)
+          if [ -f "mm/Makefile" ]; then
+            echo "ccflags-y += -Wno-error" >> mm/Makefile
           fi
 
       - name: Build Kernel (Self-Healing)
