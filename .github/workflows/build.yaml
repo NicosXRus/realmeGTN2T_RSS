@@ -218,9 +218,21 @@ jobs:
           echo "6. Патчим Oplus Process Reclaim (ошибки аргументов и хуков)..."
           find vendor -type f -name "process_mm_reclaim.c" -exec sed -i 's/&page_list, vma/&, 0/g' {} +
           find vendor -type f -name "process_mm_reclaim.c" -exec sed -i '1s/^/#define register_trace_android_vh_check_process_reclaimer(cb, data) 0\n#define unregister_trace_android_vh_check_process_reclaimer(cb, data)\n/' {} +
-          
           if [ -f "mm/Makefile" ]; then
             echo "ccflags-y += -Wno-error" >> mm/Makefile
+          fi
+
+          echo "7. Патчим Oplus DRM (ошибки синтаксиса дисплея)..."
+          if [ -f "drivers/gpu/drm/oplus/display_panel/oplus_display_panel.c" ]; then
+            # Исправляем функцию выхода
+            sed -i 's/void __exit oplus_display_panel_exit()/void __exit oplus_display_panel_exit(void)/g' drivers/gpu/drm/oplus/display_panel/oplus_display_panel.c || true
+          fi
+          # Снимаем строгие проверки с папки oplus DRM
+          if [ -f "drivers/gpu/drm/oplus/Makefile" ]; then
+            echo "ccflags-y += -Wno-error" >> drivers/gpu/drm/oplus/Makefile
+          fi
+          if [ -f "drivers/gpu/drm/oplus/display_panel/Makefile" ]; then
+            echo "ccflags-y += -Wno-error" >> drivers/gpu/drm/oplus/display_panel/Makefile
           fi
 
       - name: Build Kernel (Self-Healing)
