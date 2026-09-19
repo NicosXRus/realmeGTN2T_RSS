@@ -187,7 +187,12 @@ jobs:
             sed -i '1s/^/#include "..\/..\/mmc\/core\/queue.h"\n/' drivers/char/rpmb/rpmb-mtk.c || true
           fi
 
-          echo "3. Точечное отключение ошибок компилятора для драйвера дисплея MTK..."
+          echo "3. Патчим драйвер MTK DRM (ошибки синтаксиса fingerprint)..."
+          if [ -f "drivers/gpu/drm/mediatek/mtk_drm_crtc.c" ]; then
+            # Меняем () на (void) в функциях сканера отпечатков
+            sed -i 's/void hbm_notify_fingerprint_if_neccessary()/void hbm_notify_fingerprint_if_neccessary(void)/g' drivers/gpu/drm/mediatek/mtk_drm_crtc.c || true
+            sed -i 's/void hbm_notify_fingerprint_if_neccessary_vdo()/void hbm_notify_fingerprint_if_neccessary_vdo(void)/g' drivers/gpu/drm/mediatek/mtk_drm_crtc.c || true
+          fi
           if [ -f "drivers/gpu/drm/mediatek/Makefile" ]; then
             echo "ccflags-y += -Wno-error -Wno-incompatible-pointer-types" >> drivers/gpu/drm/mediatek/Makefile
           fi
@@ -206,7 +211,6 @@ jobs:
           fi
 
           echo "6. Патчим Oplus Process Reclaim (ошибки аргументов и хуков)..."
-          # Важно: патчим исходники прямо в папке vendor, чтобы скрипт-ищейка забрал уже исправленный файл!
           find vendor -type f -name "process_mm_reclaim.c" -exec sed -i 's/&page_list, vma/&, 0/g' {} +
           find vendor -type f -name "process_mm_reclaim.c" -exec sed -i '1s/^/#define register_trace_android_vh_check_process_reclaimer(cb, data) 0\n#define unregister_trace_android_vh_check_process_reclaimer(cb, data)\n/' {} +
           
