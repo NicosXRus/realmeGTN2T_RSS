@@ -174,7 +174,7 @@ jobs:
           python3 fix_kconfigs.py
           rm -f fix_kconfigs.py
 
-      - name: Fix OEM C Code Errors
+       - name: Fix OEM C Code Errors
         run: |
           echo "1. Патчим устаревший код MTK ION..."
           if [ -d "drivers/staging/android/mtk_ion" ]; then
@@ -187,13 +187,11 @@ jobs:
             sed -i '1s/^/#include "..\/..\/mmc\/core\/queue.h"\n/' drivers/char/rpmb/rpmb-mtk.c || true
           fi
 
-          echo "3. Патчим драйвер MTK DRM (строгость типов Clang)..."
-          if [ -f "drivers/gpu/drm/mediatek/mtk_drm_drv.c" ]; then
-            sed -i 's/&fb_base/(phys_addr_t *)\&fb_base/g' drivers/gpu/drm/mediatek/mtk_drm_drv.c || true
+          echo "3. Точечное отключение ошибок компилятора для драйвера дисплея MTK..."
+          if [ -f "drivers/gpu/drm/mediatek/Makefile" ]; then
+            # Мы просто говорим компилятору конкретно для этой папки игнорировать ошибки типов
+            echo "ccflags-y += -Wno-error -Wno-incompatible-pointer-types" >> drivers/gpu/drm/mediatek/Makefile
           fi
-
-          echo "4. Глобальная защита: отключаем -Werror во всем ядре..."
-          find . -type f -name "Makefile" -exec sed -i 's/-Werror\S*//g' {} +
 
       - name: Build Kernel (Self-Healing)
         run: |
