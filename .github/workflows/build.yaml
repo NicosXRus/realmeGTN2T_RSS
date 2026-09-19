@@ -187,14 +187,16 @@ jobs:
             sed -i '1s/^/#include "..\/..\/mmc\/core\/queue.h"\n/' drivers/char/rpmb/rpmb-mtk.c || true
           fi
 
-          echo "3. Патчим драйвер MTK DRM (ошибки синтаксиса fingerprint и устаревшие типы памяти)..."
+          echo "3. Патчим драйвер MTK DRM (ошибки синтаксиса и устаревшие типы памяти)..."
           if [ -f "drivers/gpu/drm/mediatek/mtk_drm_crtc.c" ]; then
             sed -i 's/void hbm_notify_fingerprint_if_neccessary()/void hbm_notify_fingerprint_if_neccessary(void)/g' drivers/gpu/drm/mediatek/mtk_drm_crtc.c || true
             sed -i 's/void hbm_notify_fingerprint_if_neccessary_vdo()/void hbm_notify_fingerprint_if_neccessary_vdo(void)/g' drivers/gpu/drm/mediatek/mtk_drm_crtc.c || true
           fi
           if [ -f "drivers/gpu/drm/mediatek/mtk_drm_gem.c" ]; then
-            # Заменяем устаревший тип адреса памяти
             sed -i 's/ion_phys_addr_t/phys_addr_t/g' drivers/gpu/drm/mediatek/mtk_drm_gem.c || true
+          fi
+          if [ -f "drivers/gpu/drm/mediatek/mtk_debug.c" ]; then
+            sed -i 's/get_drm_device()/get_drm_device(void)/g' drivers/gpu/drm/mediatek/mtk_debug.c || true
           fi
           if [ -f "drivers/gpu/drm/mediatek/Makefile" ]; then
             echo "ccflags-y += -Wno-error -Wno-incompatible-pointer-types" >> drivers/gpu/drm/mediatek/Makefile
