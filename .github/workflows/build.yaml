@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Kernel Source
@@ -208,7 +208,7 @@ jobs:
           while true; do
             COUNTER=$((COUNTER+1))
             set +e
-            yes "" | make O=out ARCH=arm64 ${{ github.event.inputs.defconfig }} > make_def.log 2>&1
+            yes "" | make O=out ARCH=arm64 HOSTCC=gcc HOSTCXX=g++ ${{ github.event.inputs.defconfig }} > make_def.log 2>&1
             MAKE_STATUS=$?
             set -e
             
@@ -240,7 +240,7 @@ jobs:
             COUNTER2=$((COUNTER2+1))
             
             set +e
-            make -j$(nproc --all) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- > make_build.log 2>&1
+            make -j$(nproc --all) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- HOSTCC=gcc HOSTCXX=g++ > make_build.log 2>&1
             BUILD_STATUS=$?
             set -e
             
