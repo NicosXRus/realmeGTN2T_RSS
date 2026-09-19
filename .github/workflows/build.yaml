@@ -174,7 +174,7 @@ jobs:
           python3 fix_kconfigs.py
           rm -f fix_kconfigs.py
 
-       - name: Fix OEM C Code Errors
+      - name: Fix OEM C Code Errors
         run: |
           echo "1. Патчим устаревший код MTK ION..."
           if [ -d "drivers/staging/android/mtk_ion" ]; then
